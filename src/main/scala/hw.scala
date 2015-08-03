@@ -8,46 +8,7 @@ import java.awt.geom._
 import java.io.File
 import javax.imageio.ImageIO
 import javax.swing.ImageIcon
-
-//libraryDependencies += "org.scala-lang" % "scala-swing" % "2.10.2" - error
-
-// FYI
-/*Classes in Scala are static templates that can be instantiated into many objects at runtime. 
-Case classes can't be extended via subclassing.
-Abstract classes cannot be instanciated.
-Sealed classes must have all classes on same file
-Case class to be able to pattern match */
-
-/*2 unimplemented members errors, prompted to make class absract.
-You must initialize variables. If you don't, Scala assumes you're writing an abstract class and 
-a subclass will fill in the initialization. 
-(The compiler will tell you so if you have just a single uninitialized variable.)*/
-/*var x: Int = xc
-  var y: Int = yc
-  def move(dx: Int, dy: Int) {
-    x = x + dx
-    y = y + dy
-  }
-override def toString(): String = "(" + x + ", " + y + ")"; */
-     
-/*Companion Objects; avoid the new in main
-object SumMaker( x : Var, y : Var) {
-  def apply() = new Sum(x,y)
-  }*/
-
-// difference between val and def:
-    // val evaluates when defined
-    // def evaluates on call and creates new function every time (new instance of Function1)
-    // val function1 = def functiontest( z: Var , c : Var ) =>   z + c 
-    // example function
-    // val sum  =  (  x : Int,  y : Int  )  =>  ( x  +  y )
-
-/* After you compile your code, you end up with .class files for each class in your program. 
-These binary files are the bytecode that Java interprets to execute your program. 
-The NoClassDefFoundError indicates that the classloader, which is responsible for dynamically 
-loading classes, cannot find the .class file for the class that you're trying to use. */
-
-/*A code block delimited by {} evaluates to the last expression inside it. Unit is java's void.*/
+import scala.math._
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Main Elements Classes //
@@ -67,58 +28,54 @@ sealed abstract class Expr ()
 
 /* Halide - Var objects are names to use as variables in the definition of
  a Func. They have no meaning by themselves. */
-case class Var( nm : String, va : Int ) extends Expr {
+
+ //operands
+case class Var( val nm : String ) extends Expr 
+/*case class Pixel ( var color : Int )  extends Expr {
     // attributes
-    /* private */ val name : String = nm //x, y domain axis; c color channel
-    /* private */ val value : Int = va
+     var axis1 : Var 
+     var axis2 : Var 
+     //var color : Int 
 
     // methods
-    // name
-    def getVarName() : String = name
-    /* def setName( nm : String ) { 
-        name = nm } //val not var */
+    def getColor() : Int = { color }
 
-    // value
-    def getVarValue() : Int = value
-    /* def setValue( va : Int ) { 
-        value = va } //val not var */
+    def setAxis1( value : Var ) { 
+        axis1 = value } 
 
-} // end of Class Var
+    def setAxis2( value : Var ) { 
+        axis1 = value } 
 
-// Expression operators
+    def setColor( value : Int ) { 
+        color = value } 
+
+} // end of class Pixel */
+case class Operand( val number : Double ) extends Expr 
+
+// operators
 case class Sum( x : Expr, y : Expr ) extends Expr
 case class Subst( x : Expr, y : Expr ) extends Expr
 case class Mult(  x : Expr, y : Expr ) extends Expr
 
 // Evaluate the expressions to interger results
-// an evaluator object?
-class Evaluate ( e : Expr ) extends Expr{ 
-    val eval : Expr => Int
+class Evaluate ( e : Expr , env : String => Double ) extends Expr { 
+    val eval : Expr => Double
     = _ match {
-        case Var( nm, va ) => va
-        case Sum( left, right ) => eval( left ) + eval( right )
-        case Subst( left, right ) => eval( left ) - eval( right )
-        case Mult( left, right) => eval( left ) * eval( right ) 
+        case Var( nm ) => env( nm )
+        case Operand ( number ) => number
+        //case Pixel( color ) => color
+        case Sum( left , right ) => eval( left ) + eval( right )
+        case Subst( left , right ) => eval( left ) - eval( right )
+        case Mult( left , right ) => eval( left ) * eval( right ) 
     } 
 
 } // end of Class Evaluate
 
-class PullVars ( e : Expr ) extends Expr { 
-    // var param : String = ""
-    val parameters : Expr => String
-    = _ match {
-        case Var( nm, va ) => nm + " : " + " Var " 
-        case Sum( left, right ) => parameters( left ) + ", " + parameters( right )
-        case Subst( left, right ) => parameters( left ) + ", " + parameters( right )
-        case Mult( left, right) => parameters( left ) + ", " + parameters( right ) 
-    } 
-
-} // end of Class PullVars
-
 class ExprPrinter ( e : Expr ) extends Expr {
     val print : Expr => String
         = _ match {
-            case Var( nm, va  ) => nm.toString
+            case Var( nm ) => nm.toString
+            case Operand ( value ) => value.toString
             case Sum( left, right ) => "( " + print( left ) + " + " + print( right ) + " )"
             case Subst( left, right ) => "( " + print( left ) + " - " + print( right) + " )"
             case Mult( left, right ) => "( " + print( left ) + " * " + print( right ) + " )" 
@@ -129,160 +86,228 @@ class ExprPrinter ( e : Expr ) extends Expr {
 /* Halide - A 'Func' object represents a pipeline stage. It's a pure
  function that defines what value each pixel should have. You
  can think of it as a computed image. */
-class Func( nm : String, e : Expr ) {
-    // attributes
-    val name : String = nm 
 
-    /////////////////////////////////////////////////////////////////////////////////////////// 
-    val inst2: PullVars = new PullVars( e )
-    println( inst2.parameters( e ) )
-    //val params : String = inst2 // type mismatch
+case class Func( val nm : String , val args : List[ Var ] , val e : List[ Expr ] ) {
+  
+    if ( e.length == 1 ) {
 
-    val inst4: ExprPrinter = new ExprPrinter( e )
-    println( "Test; Printer of Evaluation of Expr: " )
-    println( inst4.print( e ) )
+        //no input image
+        val inst : ExprPrinter = new ExprPrinter( e( 0 ) )
 
-    // type inference; not good with recursive functions
-    val func = "( " + inst2.parameters( e ) + " )" + " => "  + inst4.print( e )
-    //val func : String = "def " + name + "( " + inst2.parameters( e ) + " )" + " => "  + inst4.print( e )
-    /////////////////////////////////////////////////////////////////////////////////////////// 
+        println( "Evaluation of Expr " )
+        println( inst.print( e(0) ) )
 
-    // methods
-    def getFuncName() : String = name
-    def getFuncDefinition() : String = func
+    } else if ( e.length == 3 ) { 
+
+        for ( x <- 0 until 3 ) { 
+
+            // fixed; only three channels (List has no size method)
+            val inst : ExprPrinter = new ExprPrinter( e( x ) )
+
+            println( "Evaluation of Expr " )
+            println( inst.print( e( x ) ) ) 
+        }
+    }
 
 } // end of Class Func
 
 /* Halide::Image<int32_t> output = gradient.realize(800, 600); */
-
-//color channel - scala
 /*32-bit color is often called ARGB because it has alpha, red, green, and blue values all
 packed into 32 bits. */
-class Image ( img : BufferedImage ) { // Halide::Image<int32_t> ?
-    // attributes
+
+class Image ( img : BufferedImage ) { 
+    
     val image = img
-    //var bufferedImage : BufferedImage = null
-
-    /* list of types 
-    https://docs.oracle.com/javase/7/docs/api/java/awt/image/BufferedImage.html */
-
-    // BufferedImage.TYPE_INT_ARGB 
-    // Represents an image with 8-bit RGBA color components packed into integer pixels.
 
 } // end of Class Image
-
-//realize has this parameters not image. Image just receives an image
-/*class Image ( w : Int, h : Int , tp : String ) {
-    // attributes
-    val width : Int = w //x
-    val height : Int = h //y
-    val _type : String = tp
-
-    /* list of types 
-    https://docs.oracle.com/javase/7/docs/api/java/awt/image/BufferedImage.html */
-
-    var image = new BufferedImage (width, height, BufferedImage.TYPE_INT_ARGB)
-    //var bufferedImage : BufferedImage = null
-
-    // BufferedImage.TYPE_INT_ARGB 
-    // Represents an image with 8-bit RGBA color components packed into integer pixels.
-
-    // methods
-    // width, height, type
-    def getImgWidth() : Int = width
-    def getImgHeight() : Int = height
-    //def getImgType() : String = _type
-
-} // end of Class Image*/
 
 // Main 
 ///////////////////////////////////////////////////////////////////////////////////////////	
 object main {
-    def main( args: Array[String] ) {
+    def main( args: Array[ String ] ) {
 
-        val x = new Var( "x", 2 )
-        val y = new Var( "y", 3 )
+    ////////////////////////////////////////////////////////////////////////////////////////////
+    //Gradient Function
+    ////////////////////////////////////////////////////////////////////////////////////////////
+
+        val x = new Var( "x" )
+        println( x.nm )
+        val y = new Var( "y")
+        println( y.nm )
         val expr = new Sum( x , y )
-        //var expr =  new Sum( new Var( "x", 2 ), new Var( "y", 3 ) )  
+        //var expr =  new Sum( new Var( "x" , 2 ) , new Var( "y" , 3 ) )  
 
-        val inst: Evaluate = new Evaluate( expr )
-        println( "Test; Evaluation of Expr: " )
-        println( inst.eval(expr) )
+        //fixed to test the evaluation
+        val evaluateExpr: Evaluate = new Evaluate( expr  ,  Map( "x" -> 2 , "y" -> 3 ) ) 
+        println( "Testing Evaluation of Expr: " )
+        println( evaluateExpr.eval( expr ) )
         
         //val inst3: Func = new Func( "gradient", expr )
-        val inst3 = new Func( "gradient", expr )
-        println( "Func Name: " )
-        println( inst3.name )
-        // name not private
-        //println( inst3.getFuncName() )
-        //println( inst3.getFuncDefinition() )
-        val pipelineStage = inst3.getFuncDefinition()
-        println(pipelineStage)
-        //println( inst.eval( "Evaluation of Expr: " expr ) )
+        val gradient = new Func( "gradient" , List( x , y ) , List( expr ) ) 
+        println( "Func Name: " + gradient.nm )
 
-        ///////////////////////////////////////////////////////////////////////////////////////////
-        // Image practice
+    ////////////////////////////////////////////////////////////////////////////////////////////
+    //Brighter Function
+    ////////////////////////////////////////////////////////////////////////////////////////////
 
-        /*val label = new Label {
-            icon = new ImageIcon("C:\\Users\\LilliamI\\Pictures\\Wallpapers\\02.jpg")
-        }*/
-        //var bufferedImage : BufferedImage = null 
-        //val buffered = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)  
-        //bufferedImage = ImageIO.read(new File("C:\\Users\\LilliamI\\Pictures\\Wallpapers\\02.jpg")) 
+        // color packed into a single int
+        //val c = new Var( "color channel")
 
-        //val image: Image = new Image( buffered )
+        val r = new Var( "red channel" )
+        val g = new Var( "green channel" )
+        val b = new Var( "blue channel" )
 
-        //val image = ImageIO.read(new File("02.jpg"))
-        //BufferedImage image = ImageIO.read();
+        //val expr2 = new Mult( new Pixel( "x" , "y" , null ) , 1.5) 
+        // outside I dont have a func yet; dont know arguments
 
+        //val brighter = new Func( "brighter" , List( x, y ) , new Mult( new Pixel( brighter.args(0).nm , brighter.args(1) , null ) , 1.5) )
+        //val px = new Pixel ( 0 )
 
-        ///////////////////////////////////////////////////////////////////////////////////////////
-        //Realize a single stage gradient pipeline
-        def realize ( w : Int , h : Int , func : Func ) : Unit = { 
-            //Unit -> change to BufferedImage after returning the value
-            //generate the function from the string
-            val funcString : String = func.getFuncDefinition()
-            //println( funcString )
-
-            //map string to function
-            def realizeFunction( x : Int ) : String = null
-            val m = Map[ String , ( Int ) => String ]( funcString -> realizeFunction )
-            println( m )
-
-            val functionTesting = m(funcString)
-            //functionTesting(2,3)
-            
-            //val realizeFunction = func
-            val width : Int = w //x axis
-            val height : Int = h //y axis
-
-            val outImage = new BufferedImage( w , h , BufferedImage.TYPE_INT_RGB )
-    
-            /*//loops to process pipeline stage
-            for ( x <- 1 until width )
-            for ( y <- 1 until height ) {
-                // setRGB(int x, int y, int rgb) 
-                // Sets a pixel in this BufferedImage to the specified RGB value.
-                //outImage.setRGB( x , y , /*FUNC*/ )
-            }*/
+        // color packed into a single int
+        // val exprBrighter = new Mult( c , new Operand( 2 ) )
+        // individual R G B channels
+        val exprR = new Mult( r , new Operand( 1.2 ) )
+        val exprG = new Mult( g , new Operand( 1.2 ) )
+        val exprB = new Mult( b , new Operand( 1.2 ) )
         
-            //outImage //gets assigned to Image Object
-        } //end of def realize
+        //val brighter = new Func( "brighter" , List( x , y , c ) , exprBrighter )
+        // like this how to write the Expr object?
+        val brighter = new Func( "brighter" , List( x , y , r , g , b ) , List( exprR , exprG , exprB ) )
 
-        realize( 800 , 600 , inst3 ) //test with Unit return type
-        //assign the realize to an image object with BufferedImage return type
-        //val imageTest = new Image( realize( 800 , 600 , inst3 ) )
+        // variable number of arguments, def not case classes
+        ///////////////////////////////////////////////////////////////////////////////////////////
+
+        // Realize a single stage gradient pipeline
+        def realize ( w : Int , h : Int , func : Func , inImg : BufferedImage ) : BufferedImage = { 
+
+            println( "Realizing " + func.nm + " Func" )
+
+            val width : Int = w // x axis
+            val height : Int = h // y axis
+            val outImg = new BufferedImage( w , h , BufferedImage.TYPE_INT_ARGB )
+
+            if ( inImg == null ) {
+            
+                for ( x <- 0 until width ; y <- 0 until height) {
+                    // setRGB(int x, int y, int rgb) 
+                    // sets a pixel in this BufferedImage to the specified RGB value.
+
+                    val inst = new Evaluate( func.e( 0 )  ,  Map( func.args( 0 ).nm -> x , func.args( 1 ).nm -> y ) )
+                
+        
+                    outImg.setRGB( x , y , inst.eval( func.e( 0 ) ).toInt )
+                }
+
+            } else {
+
+                for ( x <- 0 until width ; y <- 0 until height ) {
+
+                    // int
+                    /*00000000 00000000 00000000 11111111
+                      ^ Alpha  ^ Red    ^ Green  ^ Blue */ 
+                    val colour : Int = inImg.getRGB( x , y )
+                    //val b : Int = ( colour ) & 0x000000FF
+                    //val g : Int = ( colour >> 8 ) & 0x0000FF00
+                    //val r : Int = ( colour >> 16 ) & 0x00FF0000
+                    //val a : Int = ( colour >> 24 ) & 0xFF000000
+                    val b : Int = colour & 0x000000FF
+                    val g : Int = ( colour & 0x0000FF00 ) >> 8
+                    val r : Int = ( colour & 0x00FF0000 ) >> 16
+                    val a : Int = ( colour & 0xFF000000 ) >> 24
+                    //a = min( 0 , a )
+
+                    println( " ----------------------------------------------------------------- " )
+                    println( "1. Type Int | at x: " + x + " , " + " y: " + y + " is: " + colour ) 
+                    println( "2. Type Int | red: " + r + " - green: " + g + " - blue: " + b + " - alpha: " + a)
+
+                    val c : Color = new Color( colour )
+
+                    println( "3. Type Color | at x: " + x + " , " + " y: " + y + " is: " + c ) 
+
+                    val red = c.getRed
+                    val green = c.getGreen
+                    val blue = c.getBlue
+                    val alpha = c.getAlpha
+
+                    println( "4. Type Color | red: " + red + " - green: " + green + " - blue: " + blue + " - alpha: " + alpha )
+
+                    //func.e.px.color
+                    //val inst = new Evaluate( exprBrighter  ,  Map( func.args(0).nm -> x , func.args(1).nm -> y , func.args(2).nm -> colour ) )
+                    //val inst = new Evaluate( func.e(1)  ,  Map( func.args(0).nm -> x , func.args(1).nm -> y , func.args(2).nm -> r , func.args(3).nm -> g , func.args(3).nm -> b ) ) 
+
+                    println ( "  ")
+                    val newInts = new Array[ Int ]( 3 )
+                    for ( x <- 0 until 3 ) { 
+
+                        // fixed; only three channels ( List has no size method )
+                        //check that each channel does not go over 255
+
+                        val evaluation = new Evaluate( func.e( x )  ,  Map( func.args( 0 ).nm -> x , func.args( 1 ).nm -> y , func.args(2).nm -> r , func.args(3).nm -> g , func.args(4).nm -> b ) )
+                        val num : Int =  evaluation.eval( func.e( x ) ).toInt
+
+                        newInts( x ) = min( num , 255 ) // not proportional
+                        //newInts( x ) = num
+                        //println( "NewInts Array( " + x + " ) = " + newInts( x ) ) 
+                        //func.args( 2 ) = Var("Red Channel")
+
+                        val printer: ExprPrinter = new ExprPrinter( func.e( x ) )
+                        println( "Evaluating Expr : " + printer.print( func.e( x ) ) + " = " + newInts( x ) )
+                    }
+
+                    val newR = newInts( 0 )
+                    val newG = newInts( 1 )
+                    val newB = newInts( 2 )
+
+                    println( "5. Type Int | red: " + newR + " - green: " + newG + " - blue: " + newB + " - alpha: " + a )
+                
+                    //pack them into one 32bit integer
+                    /*00000000 00000000 00000000 11111111
+                      ^ Alpha  ^ Red    ^ Green  ^ Blue */ 
+
+                    val fnl : Int = ( alpha << 24 ) | ( newR << 16 ) | ( newG << 8 ) | newB
+                    println( "final color: " + fnl )
+                    outImg.setRGB( x , y , fnl )
+
+                }
+            }
+
+            outImg
+
+        } // end of def realize
+
+        ///////////////////////////////////////////////////////////////////////////////////////////
+        //lesson 1
+        ///////////////////////////////////////////////////////////////////////////////////////////
+
+        //realize( 800 , 600 , gradient , null ) 
+
+        ///////////////////////////////////////////////////////////////////////////////////////////
+        //lesson 2
+        ///////////////////////////////////////////////////////////////////////////////////////////
+
+        //val inImg : BufferedImage = ImageIO.read( new File("C:\\Users\\LilliamI\\Pictures\\Img\\Tiny-wings-icon.jpg" ) )
+        val inImg : BufferedImage = ImageIO.read( new File("C:\\Users\\LilliamI\\Pictures\\Img\\image.jpg" ) )
+        /*val testload = inImg
+        println( "Saving load test jpg" )
+        ImageIO.write( testload, "jpg", new File("loadingTest.jpg") )*/
+
+        val brighterImg = realize( inImg.getWidth , inImg.getHeight , brighter , inImg )
+
+        println( "Saving result test jpg" )
+        ImageIO.write( brighterImg, "png", new File( "brighterTest.png" ) )
 
         ///////////////////////////////////////////////////////////////////////////////////////////
         //Panels
+        ///////////////////////////////////////////////////////////////////////////////////////////
 
         //val img = new BufferedImage (200,200,BufferedImage.TYPE_INT_ARGB)
         val panel = new Panel {
+
             override def paint( g : Graphics2D ) {
-                //g.drawImage( (realize( 800 , 600 , inst3 )) , 0 , 0 , null ) //test with BufferedImage type
-                //g.drawImage(image,0,0,null) //cant be applied to my class
+                g.drawImage( brighterImg , 0 , 0 , null )
             }
-            preferredSize = new Dimension( 500 , 500 )
+
+            preferredSize = new Dimension( brighterImg.getWidth , brighterImg.getHeight )
         }
 
         val frame = new MainFrame {
@@ -291,8 +316,10 @@ object main {
             centerOnScreen
         }
 
+        //not saving correctly
+        //frame is good
         frame.open
 
     } // end of def main
+
 } // end of object main
-///////////////////////////////////////////////////////////////////////////////////////////
